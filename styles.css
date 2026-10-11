@@ -1,0 +1,45 @@
+body { font-family: Georgia, 'Times New Roman', serif; background: #fff; color: #1a1a1a; margin: 0; }
+.layout { display: flex; gap: 1.75rem; max-width: 70rem; margin: 0; padding: 0 1.25rem; align-items: flex-start; }
+.layout > main { flex: 1 1 auto; min-width: 0; max-width: 46rem; margin: 0; padding: 1rem 0 4rem; }
+h1 { font-size: 1.8rem; }
+section { border-top: 1px solid #ddd; padding: 1rem 0; }
+label { display: block; margin: 0.5rem 0; }
+textarea, input[type="password"], input[type="number"], select { width: 100%; max-width: 100%; box-sizing: border-box; font-size: 1rem; padding: 0.4rem; }
+button { font-size: 1rem; margin: 0.25rem 0.25rem 0.25rem 0; padding: 0.5rem 1rem; }
+button:disabled { opacity: 0.45; }
+#out-status { border: 1px solid #ddd; padding: 0.75rem; min-height: 2.5rem; background: #fafafa; }
+.aviso { font-size: 0.85rem; color: #555; }
+@media (max-width: 66rem) { .layout { flex-direction: column; gap: 0; } #estilos { position: static; max-height: none; width: 100%; padding-top: 0; order: 2; } }
+@media (max-width: 40rem) { .layout { padding: 0 0.75rem; } .layout > main { padding: 0.75rem 0 3rem; } }
+#btn-theme { font-size: 1.1rem; padding: 0.2rem 0.6rem; vertical-align: middle; }
+body.dark { background: #1a1a1a; color: #e8e8e8; }
+body.dark section { border-color: #444; }
+body.dark #out-status { background: #222; border-color: #444; }
+body.dark textarea, body.dark input, body.dark select { background: #222; color: #eee; border: 1px solid #555; }
+body.dark .aviso { color: #aaa; }
+
+/* Barra lateral de previsualización de estilos */
+#estilos { flex: 0 0 auto; width: 18.5rem; box-sizing: border-box; position: sticky; top: 0.75rem; max-height: calc(100vh - 1.5rem); overflow-y: auto; padding: 1rem 0 2rem; transition: width .15s ease; }
+#estilos h2 { font-size: 1.15rem; margin: 0 0 0.25rem; }
+#estilos h2 button { font: inherit; font-size: 1.15rem; background: none; border: 0; padding: 0; color: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 0.35rem; }
+#estilos .caret { display: inline-block; font-size: 0.9em; transition: transform .15s ease; }
+#estilos.collapsed { width: auto; }
+#estilos.collapsed .caret { transform: rotate(-90deg); }
+#estilos.collapsed .aviso, #estilos.collapsed #style-previews { display: none; }
+.style-card { display: block; width: 100%; box-sizing: border-box; text-align: left; background: #fff; color: inherit; border: 1px solid #ddd; border-radius: 10px; padding: 0.55rem; margin: 0 0 0.8rem; cursor: pointer; font: inherit; }
+.style-card:hover { border-color: #999; }
+.style-card.selected { border-color: var(--accent, #4d83c3); box-shadow: 0 0 0 2px var(--accent, #4d83c3); }
+.style-name { display: block; font-size: 0.85rem; font-weight: bold; }
+.mini { position: relative; aspect-ratio: 16 / 9; border-radius: 6px; overflow: hidden; margin-top: 0.45rem; }
+.mini-cover .m-blob { position: absolute; right: 5%; top: 10%; width: 29%; aspect-ratio: 1; border-radius: 50%; background: var(--a2); opacity: 0.85; }
+.mini-cover .m-blob2 { right: 7%; top: 49%; width: 15%; background: var(--a4); opacity: 0.8; }
+.mini-cover .m-title { position: absolute; left: 7%; top: 27%; width: 56%; font-family: var(--ft); font-size: 0.72rem; font-weight: bold; line-height: 1.1; color: var(--covert); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini-cover .m-sub { position: absolute; left: 7%; top: 60%; width: 56%; font-family: var(--fb); font-size: 0.5rem; color: var(--covers); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini-content .m-h { position: absolute; left: 5%; top: 6%; width: 82%; font-family: var(--ft); font-size: 0.62rem; font-weight: bold; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini-content .m-bar { position: absolute; left: 5%; top: 22%; width: 16%; height: 3px; background: var(--accent); }
+.mini-content .m-bullets { position: absolute; left: 7%; right: 4%; top: 31%; font-family: var(--fb); font-size: 6.5px; line-height: 1.5; color: var(--ink); }
+.mini-content .m-b { display: flex; align-items: center; gap: 3px; margin-bottom: 6px; white-space: nowrap; overflow: hidden; }
+.mini-content .m-dot { flex: 0 0 auto; width: 3px; height: 3px; border-radius: 50%; background: var(--ink); }
+.mini-content .m-b b { color: var(--accent); }
+body.dark .style-card { background: #222; border-color: #444; }
+body.dark .style-card:hover { border-color: #666; }

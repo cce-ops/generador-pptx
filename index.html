@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Generador PPTX — de apuntes a presentación editable</title>
+<link rel="stylesheet" href="styles.css">
+<script src="https://cdn.jsdelivr.net/npm/pptxgenjs@4.0.1/dist/pptxgen.bundle.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mammoth@1.13.0/mammoth.browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.js"></script>
+</head>
+<body>
+<div class="layout">
+<aside id="estilos" aria-label="Previsualización de estilos">
+<h2><button type="button" id="btn-estilos" aria-expanded="true" aria-controls="style-previews" title="Plegar o desplegar la barra de estilos">Estilos de presentación <span class="caret" aria-hidden="true">▾</span></button></h2>
+<p class="aviso">Así se ven la portada y una slide de contenido con cada estilo. Pulsa uno para elegirlo; pulsa el título para plegar la barra.</p>
+<div id="style-previews"></div>
+</aside>
+<main>
+<h1>Generador PPTX <button type="button" id="btn-theme" title="Modo oscuro">🌙</button></h1>
+<p>Convierte tus apuntes en una presentación editable (.pptx). Todo ocurre en tu navegador: tu clave solo viaja al proveedor de IA que elijas.</p>
+
+<section>
+<h2>1. Apuntes</h2>
+<label for="in-text">Pega tu texto:</label>
+<textarea id="in-text" rows="10" placeholder="Pega aquí tus apuntes…"></textarea>
+<p>O sube un fichero (si subes fichero, tiene prioridad sobre el texto):</p>
+<label>Markdown (.md): <input type="file" id="in-md" accept=".md,.markdown"></label>
+<label>Word (.docx): <input type="file" id="in-docx" accept=".docx"></label>
+<label>PDF (.pdf): <input type="file" id="in-pdf" accept=".pdf"></label>
+</section>
+
+<section>
+<h2>2. Clave de IA (BYOK)</h2>
+<label for="sel-provider">Proveedor:</label>
+<select id="sel-provider">
+<option value="aistudio" selected>Google AI Studio (Gemini, gratis)</option>
+<option value="openrouter">OpenRouter (modelos gratuitos)</option>
+</select>
+<label for="in-model">Modelo:</label>
+<select id="in-model"></select>
+<label for="in-key">API key:</label>
+<input type="password" id="in-key" autocomplete="off" placeholder="Tu clave personal">
+<button type="button" id="btn-key-del">Borrar clave</button>
+<p class="aviso">La clave se guarda solo en el <code>localStorage</code> de este navegador. Úsala solo tú; en la consola de tu proveedor puedes restringirla por dominio.</p>
+</section>
+
+<section>
+<h2>3. Generar</h2>
+<label for="in-instrucciones">Instrucciones para la IA (opcional):</label>
+<textarea id="in-instrucciones" rows="3" placeholder="Conceptos o reglas que no se pueden saltar. Ej.: Debe aparecer: huella de carbono, ISO 14006, economía circular regenerativa…"></textarea>
+<label for="in-max">Número de diapositivas (1–30):</label>
+<input type="number" id="in-max" value="15" min="1" max="30">
+<label for="sel-theme">Estilo de presentación:</label>
+<select id="sel-theme"></select>
+<div>
+<button type="button" id="btn-generate">Generar estructura</button>
+<button type="button" id="btn-demo">Probar sin clave (ejemplo)</button>
+<button type="button" id="btn-download">Descargar .pptx</button>
+</div>
+</section>
+
+<section>
+<h2>Estado</h2>
+<div id="out-status" role="status">Listo.</div>
+</section>
+</main>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

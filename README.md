@@ -86,11 +86,17 @@ comando de build vacío).
 
 ## Notas técnicas
 
-Librerías fijadas vía CDN jsDelivr (sin build):
+Librerías fijadas vía CDN jsDelivr (sin build), con **SRI** (`integrity` +
+`crossorigin`) para que un fallo del CDN no ejecute código ajeno:
 
 - `pptxgenjs@4.0.1` — genera el `.pptx`.
 - `mammoth@1.13.0` — extrae texto de `.docx`.
 - `pdfjs-dist@3.11.174` — extrae texto e imágenes de `.pdf` (UMD; la 4.x es solo ESM).
+
+El worker de pdf.js (`pdf.worker.js`) va **autoalojado en el repo** (mismo origen):
+así no depende del CDN y pdf.js usa su worker real. Además `getDocument` se llama
+con `isEvalSupported: false` para cerrar el CVE-2024-4367 (el parser de fuentes de
+pdf.js era vulnerable a ejecución de código con un PDF malicioso).
 
 La IA devuelve una estructura JSON (`kind`, `title`, `bullets`…). Un normalizador
 garantiza que el número de slides pedido se cumpla, que cada slide tenga título y que

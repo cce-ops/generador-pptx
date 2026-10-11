@@ -159,9 +159,11 @@ function pdfImgToSrc(img) {
 
 function extractPdf(buf) {
   if (typeof pdfjsLib !== 'undefined' && pdfjsLib.GlobalWorkerOptions && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.js'
+    // worker autoalojado en el repo (mismo origen): sin dependencia del CDN y con worker real.
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'pdf.worker.js'
   }
-  return pdfjsLib.getDocument({ data: buf }).promise.then((pdf) => {
+  // isEvalSupported:false cierra el CVE-2024-4367 (JS arbitrario al parsear fuentes maliciosas).
+  return pdfjsLib.getDocument({ data: buf, isEvalSupported: false }).promise.then((pdf) => {
     const OPS = pdfjsLib.OPS
     const pages = []
     const srcs = []
@@ -981,7 +983,10 @@ const CHART_TYPES = {
 // Devuelve null si no hay datos renderizables.
 function sanitizeChart(c) {
   if (!c || typeof c !== 'object') return null
-  const type = CHART_TYPES[String(c.type == null ? '' : c.type).trim().toLowerCase()] || 'bar'
+  // Object.hasOwn evita resolver propiedades heredadas (__proto__, constructor…) que
+  // serian truthy y saltarian el fallback (robustez; ver auditoria hallazgo 5).
+  const tkey = String(c.type == null ? '' : c.type).trim().toLowerCase()
+  const type = (Object.prototype.hasOwnProperty.call(CHART_TYPES, tkey) ? CHART_TYPES[tkey] : null) || 'bar'
   const axisTitle = String(c.axisTitle == null ? '' : c.axisTitle).trim().slice(0, 48)
   let cats = (Array.isArray(c.categories) ? c.categories : [])
     .map(v => String(v == null ? '' : v).trim())
@@ -1270,8 +1275,10 @@ function fetchWithTimeout(url, options, ms) {
 }
 
 function callAistudio(apiKey, model, prompt, ms, images) {
+  // la clave viaja en la cabecera x-goog-api-key, no en la URL, para no dejarla en
+  // registros de proxies/extensiones que inspeccionan la linea de peticion.
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)
-  }:generateContent?key=${encodeURIComponent(apiKey)}`
+  }:generateContent`
   const parts = [{ text: prompt }]
   ;(Array.isArray(images) ? images : []).forEach((im) => {
     const m = /^data:([^;]+);base64,(.*)$/.exec(im.data || '')
@@ -1279,7 +1286,7 @@ function callAistudio(apiKey, model, prompt, ms, images) {
   })
   return fetchWithTimeout(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
     body: JSON.stringify({
       contents: [{ parts }],
       generationConfig: { responseMimeType: 'application/json' },
@@ -1302,7 +1309,8 @@ function callOpenrouter(apiKey, model, prompt, ms, images) {
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${apiKey}`,
-      'HTTP-Referer': location.href,
+      // origen+path (sin query ni fragmento): atribucion sin filtrar la URL completa.
+      'HTTP-Referer': location.origin + location.pathname,
     },
     body: JSON.stringify({
       model,

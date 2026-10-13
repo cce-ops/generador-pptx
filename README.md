@@ -3,6 +3,8 @@
 Convierte apuntes en una presentación `.pptx` **editable en PowerPoint**, 100 % en el
 navegador. Sin backend, sin cuentas, sin telemetría y **gratis de alojar**.
 
+https://cce-ops.github.io/generador-pptx/
+
 Pega texto, o sube un `.md` / `.docx` / `.pdf`, elige un estilo y descarga una
 presentación 16:9 con portada, tablas, gráficos nativos y las propias figuras del
 documento. Usas **tu propia clave de API** (BYOK): no pasa nada por un servidor intermedio.

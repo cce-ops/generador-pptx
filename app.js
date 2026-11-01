@@ -1230,7 +1230,7 @@ if (typeof globalThis !== 'undefined') {
 
 const KEY_NAME = 'pptxgen.key.v1'
 const PROVIDERS = {
-  aistudio: { label: 'Google AI Studio', model: 'gemini-3.8-flash', models: ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'], keyUrl: 'https://aistudio.google.com/apikey' },
+  aistudio: { label: 'Google AI Studio', model: 'gemini-flash-latest', models: ['gemini-flash-latest', 'gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'], keyUrl: 'https://aistudio.google.com/apikey' },
   openrouter: { label: 'OpenRouter', model: 'meta-llama/llama-3.3-70b-instruct:free', models: ['meta-llama/llama-3.3-70b-instruct:free'], keyUrl: 'https://openrouter.ai/keys' },
 }
 let lastSlides = null

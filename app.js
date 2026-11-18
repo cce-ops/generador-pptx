@@ -1244,7 +1244,7 @@ if (typeof globalThis !== 'undefined') {
 
 const KEY_NAME = 'pptxgen.key.v1'
 const PROVIDERS = {
-  aistudio: { label: 'Google AI Studio', model: 'gemini-flash-latest', models: ['gemini-flash-latest', 'gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'], keyUrl: 'https://aistudio.google.com/apikey' },
+  aistudio: { label: 'Google AI Studio', model: 'gemini-2.5-flash', models: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash', 'gemini-1.5-flash-8b'], keyUrl: 'https://aistudio.google.com/apikey' },
 }
 let lastSlides = null
 let lastFormat = 'pptx'
@@ -1361,7 +1361,7 @@ function structureSlides(text, opts) {
   const provider = o.provider || 'aistudio'
   const p = PROVIDERS[provider] || PROVIDERS.aistudio
   const maxSlides = Math.max(1, Math.min(o.maxSlides || DEFAULT_MAX_SLIDES, 30))
-  const waitMs = (typeof o.waitMs === 'number') ? o.waitMs : 3000
+  const waitMs = (typeof o.waitMs === 'number') ? o.waitMs : 1500  // reducido de 3000 a 1500
   const timeoutMs = (typeof o.timeoutMs === 'number') ? o.timeoutMs : REQUEST_TIMEOUT_MS
   const t = truncateText(text)
   const notice = t.truncated ? ` (nota: texto recortado a ${MAX_CHARS} caracteres)` : ''
@@ -1371,13 +1371,14 @@ function structureSlides(text, opts) {
   const prompt = buildPrompt(t.text, maxSlides, o.instrucciones, { imageCount: images.length, vision: wantVision })
   const blindPrompt = buildPrompt(t.text, maxSlides, o.instrucciones, { imageCount: images.length, vision: false })
   const call = provider === 'openrouter' ? callOpenrouter : callAistudio
-  const chain = provider === 'aistudio' ? orderModels(p.models, o.model || p.model) : [(o.model || p.model)]
+  // Solo 3 modelos max: el elegido + 2 fallbacks rápidos
+  const allModels = provider === 'aistudio' ? orderModels(p.models, o.model || p.model) : [(o.model || p.model)]
+  const chain = allModels.slice(0, 3)
   const ask = (model, pr, useImages) => call(o.apiKey || '', model, pr, timeoutMs, useImages ? images : [])
     .then((raw) => assignFigures(normalizeSlides(extractJson(raw), maxSlides), images, useImages ? 'vision' : 'blind'))
-  // Si la IA entrega menos diapositivas de las pedidas, se repite (máx. 2 veces)
-  // con un correctivo antes de aceptar el resultado.
+  // Si la IA entrega menos diapositivas, reintenta UNA sola vez (antes eran 2)
   const complete = (model, slides, attempt, useImages) => {
-    if (slides.length >= maxSlides || attempt > 2)
+    if (slides.length >= maxSlides || attempt > 1)
       return slides
     setStatus('estructurando', `La IA entregó ${slides.length} de ${maxSlides} diapositivas; pidiendo de nuevo…`)
     const corrective = prompt

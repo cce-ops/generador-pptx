@@ -64,6 +64,6 @@ test('structureSlides acepta el mejor resultado tras agotar reintentos', async (
   let call = 0
   const g = load(() => { call++; return Promise.resolve(gemini(deckJson(shortDeck()))) })
   const slides = await g.structureSlides('apuntes', { provider: 'aistudio', apiKey: 'K', maxSlides: 15, timeoutMs: 5000 })
-  assert.equal(call, 3, 'máximo 1 + 2 reintentos: ' + call)
+  assert.equal(call, 2, 'máximo 1 + 1 reintento: ' + call)
   assert.equal(slides.length, shortDeck().length)
 })

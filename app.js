@@ -1248,7 +1248,7 @@ const PROVIDERS = {
 }
 // URL del backend de compilación (cámbiala al desplegar en Render)
 // Ejemplo: 'https://generador-pptx-compiler.onrender.com'
-const COMPILER_BACKEND_URL = ''
+const COMPILER_BACKEND_URL = 'https://generador-pptx-backend.onrender.com'
 
 let lastSlides = null
 let lastFormat = 'pptx'

@@ -1226,6 +1226,7 @@ if (typeof globalThis !== 'undefined') {
     render_closing,
     buildPptx,
     buildLatex,
+    buildPython,
     escapeLatex,
     escapeLatexKeepMath,
     escapeLatexNoMath,
@@ -1901,6 +1902,267 @@ function buildLatex(slides, meta) {
   return latex
 }
 
+// ===== GENERADOR PYTHON (python-pptx) =====
+function buildPython(slides, meta) {
+  const m = meta || {}
+  const th = THEMES[m.theme] || THEMES.seriph
+  const pages = paginateSlides(slides)
+  const title = (m.title || (pages[0] && pages[0].title) || 'Presentación').replace(/"/g, '\\"')
+  const subtitle = (pages[0].subtitle || '').replace(/"/g, '\\"')
+
+  let py = `# Generado por Generador PPTX\n`
+  py += `# Ejecutar: python presentacion.py\n`
+  py += `# Requiere: pip install python-pptx\n\n`
+  py += `from pptx import Presentation\n`
+  py += `from pptx.util import Inches, Pt, Emu\n`
+  py += `from pptx.dml.color import RGBColor\n`
+  py += `from pptx.enum.text import PP_ALIGN, MSO_ANCHOR\n`
+  py += `from pptx.enum.shapes import MSO_SHAPE\n\n`
+  py += `# Paleta de colores del tema\n`
+  py += `COLORS = {\n`
+  for (const [key, hex] of Object.entries({
+    bg: th.bg, ink: th.ink, muted: th.muted, accent: th.accent,
+    cardBg: th.cardBg, cardTitle: th.cardTitle, cardText: th.cardText,
+    tableHeaderBg: th.tableHeaderBg, tableHeaderFg: th.tableHeaderFg,
+    footer: th.footer, badgeFill: th.badgeFill, badgeText: th.badgeText,
+    coverBg: th.coverBg, coverTitle: th.coverTitle, coverSub: th.coverSub,
+    accent2: th.accent2 || th.accent, accent3: th.accent3 || th.accent,
+    accent4: th.accent4 || th.accent, accent5: th.accent5 || th.accent,
+    accent6: th.accent6 || th.accent, redTint: th.redTint, grid: th.grid
+  })) {
+    const r = parseInt(hex.slice(0, 2), 16)
+    const g = parseInt(hex.slice(2, 4), 16)
+    const b = parseInt(hex.slice(4, 6), 16)
+    py += `    '${key}': RGBColor(0x${r.toString(16).padStart(2, '0')}, 0x${g.toString(16).padStart(2, '0')}, 0x${b.toString(16).padStart(2, '0')}),\n`
+  }
+  py += `}\n\n`
+  py += `FONT_TITLE = '${th.fontTitle}'\n`
+  py += `FONT_BODY = '${th.fontBody}'\n\n`
+  py += `def hex_to_rgb(hex_str):\n`
+  py += `    hex_str = hex_str.lstrip('#')\n`
+  py += `    return tuple(int(hex_str[i:i+2], 16) for i in (0, 2, 4))\n\n`
+  py += `def add_text_box(slide, left, top, width, height, text, font_size=14, bold=False, color='ink', font_name=FONT_BODY, alignment=PP_ALIGN.LEFT, vertical_anchor=MSO_ANCHOR.TOP):\n`
+  py += `    txBox = slide.shapes.add_textbox(Emu(left), Emu(top), Emu(width), Emu(height))\n`
+  py += `    tf = txBox.text_frame\n`
+  py += `    tf.word_wrap = True\n`
+  py += `    p = tf.paragraphs[0]\n`
+  py += `    p.text = text\n`
+  py += `    p.font.size = Pt(font_size)\n`
+  py += `    p.font.bold = bold\n`
+  py += `    p.font.color.rgb = COLORS[color]\n`
+  py += `    p.font.name = font_name\n`
+  py += `    p.alignment = alignment\n`
+  py += `    tf.vertical_anchor = vertical_anchor\n`
+  py += `    return txBox\n\n`
+  py += `def add_bullet_slide(slide, bullets, left, top, width, height, font_size=18, color='ink', font_name=FONT_BODY):\n`
+  py += `    txBox = slide.shapes.add_textbox(Emu(left), Emu(top), Emu(width), Emu(height))\n`
+  py += `    tf = txBox.text_frame\n`
+  py += `    tf.word_wrap = True\n`
+  py += `    for i, bullet in enumerate(bullets):\n`
+  py += `        if i == 0:\n`
+  py += `            p = tf.paragraphs[0]\n`
+  py += `        else:\n`
+  py += `            p = tf.add_paragraph()\n`
+  py += `        p.level = 0\n`
+  py += `        p.space_after = Pt(12)\n`
+  py += `        p.line_spacing = 1.25\n`
+  py += `        # Procesar **negrita**\n`
+  py += `        import re\n`
+  py += `        parts = re.split(r'\\*\\*(.+?)\\*\\*', bullet)\n`
+  py += `        for j, part in enumerate(parts):\n`
+  py += `            run = p.add_run()\n`
+  py += `            run.text = part\n`
+  py += `            run.font.size = Pt(font_size)\n`
+  py += `            run.font.color.rgb = COLORS[color]\n`
+  py += `            run.font.name = font_name\n`
+  py += `            if j % 2 == 1:\n`
+  py += `                run.font.bold = True\n`
+  py += `                run.font.color.rgb = COLORS['accent']\n`
+  py += `    return txBox\n\n`
+  py += `prs = Presentation()\n`
+  py += `prs.slide_width = Inches(13.333)\n`
+  py += `prs.slide_height = Inches(7.5)\n\n`
+
+  let sec = 0
+  pages.forEach((pg, i) => {
+    if (pg.cover) return
+    sec += 1
+    const slideTitle = `${sec}. ${pg.title}`.replace(/"/g, '\\"')
+    const slideVar = `slide${i}`
+
+    py += `# Slide ${i + 1}: ${slideTitle}\n`
+    py += `${slideVar} = prs.slides.add_slide(prs.slide_layouts[6])  # blank layout\n`
+    py += `${slideVar}.background.fill.solid()\n`
+    py += `${slideVar}.background.fill.fore_color.rgb = COLORS['${pg.cover ? 'coverBg' : 'bg'}']\n\n`
+
+    if (pg.closing) {
+      py += `add_text_box(${slideVar}, Inches(0.5), Inches(0.3), Inches(9), Inches(0.8), "${slideTitle}", font_size=28, bold=True, color='ink', font_name=FONT_TITLE, alignment=PP_ALIGN.LEFT, vertical_anchor=MSO_ANCHOR.MIDDLE)\n`
+      pg.closing.forEach((item, idx) => {
+        const y = 1.55 + idx * 1.25
+        py += `add_text_box(${slideVar}, Inches(0.7), Inches(${y.toFixed(2)}), Inches(0.6), Inches(0.6), "${idx + 1}", font_size=16, bold=True, color='badgeText', font_name=FONT_BODY, alignment=PP_ALIGN.CENTER, vertical_anchor=MSO_ANCHOR.MIDDLE)\n`
+        py += `# Badge circle (manual shape needed)\n`
+        py += `add_text_box(${slideVar}, Inches(1.6), Inches(${y.toFixed(2)}), Inches(7.8), Inches(1.0), "${item.replace(/"/g, '\\"')}", font_size=20, color='ink', font_name=FONT_BODY, vertical_anchor=MSO_ANCHOR.MIDDLE)\n`
+      })
+      py += `\n`
+      return
+    }
+
+    if (pg.stats) {
+      py += `add_text_box(${slideVar}, Inches(0.5), Inches(0.3), Inches(9), Inches(0.8), "${slideTitle}", font_size=28, bold=True, color='ink', font_name=FONT_TITLE, alignment=PP_ALIGN.LEFT, vertical_anchor=MSO_ANCHOR.MIDDLE)\n`
+      py += `# Title bar\n`
+      py += `shape = ${slideVar}.shapes.add_shape(MSO_SHAPE.RECTANGLE, Emu(Inches(0.5)), Emu(Inches(1.18)), Emu(Inches(1.6)), Emu(Inches(0.06)))\n`
+      py += `shape.fill.solid(); shape.fill.fore_color.rgb = COLORS['accent']; shape.line.fill.background()\n`
+      pg.stats.forEach((stat, idx) => {
+        if (idx >= 2) return
+        const x = idx === 0 ? 0.5 : 5.0
+        py += `add_text_box(${slideVar}, Inches(${x}), Inches(1.5), Inches(4.2), Inches(3.0), "${stat.label}", font_size=14, bold=False, color='ink', font_name=FONT_BODY, vertical_anchor=MSO_ANCHOR.TOP)\n`
+        py += `add_text_box(${slideVar}, Inches(${x}), Inches(1.95), Inches(4.2), Inches(1.25), "${stat.value}", font_size=36, bold=True, color='${stat.color || 'accent'}', font_name=FONT_TITLE, vertical_anchor=MSO_ANCHOR.MIDDLE)\n`
+      })
+      if (pg.takeaway) {
+        py += `add_text_box(${slideVar}, Inches(0.8), Inches(4.6), Inches(8.4), Inches(0.85), "Idea clave ${pg.takeaway.replace(/"/g, '\\"')}", font_size=14, color='accent2', font_name=FONT_BODY, vertical_anchor=MSO_ANCHOR.MIDDLE)\n`
+      }
+      py += `\n`
+      return
+    }
+
+    if (pg.process) {
+      py += `add_text_box(${slideVar}, Inches(0.5), Inches(0.3), Inches(9), Inches(0.8), "${slideTitle}", font_size=28, bold=True, color='ink', font_name=FONT_TITLE, alignment=PP_ALIGN.LEFT, vertical_anchor=MSO_ANCHOR.MIDDLE)\n`
+      py += `shape = ${slideVar}.shapes.add_shape(MSO_SHAPE.RECTANGLE, Emu(Inches(0.5)), Emu(Inches(1.18)), Emu(Inches(1.6)), Emu(Inches(0.06)))\n`
+      py += `shape.fill.solid(); shape.fill.fore_color.rgb = COLORS['accent']; shape.line.fill.background()\n`
+      pg.process.forEach((step, idx) => {
+        if (idx >= 2) return
+        const x = idx === 0 ? 0.5 : 5.0
+        py += `add_text_box(${slideVar}, Inches(${x + 2.5}), Inches(1.55), Inches(0.6), Inches(0.6), "${idx + 1}", font_size=16, bold=True, color='badgeText', font_name=FONT_BODY, alignment=PP_ALIGN.CENTER, vertical_anchor=MSO_ANCHOR.MIDDLE)\n`
+        py += `# Badge circle (manual shape needed)\n`
+        py += `add_text_box(${slideVar}, Inches(${x}), Inches(2.3), Inches(4.2), Inches(0.7), "${step[0].replace(/"/g, '\\"')}", font_size=16, bold=True, color='ink', font_name=FONT_TITLE, alignment=PP_ALIGN.CENTER, vertical_anchor=MSO_ANCHOR.MIDDLE)\n`
+        py += `add_text_box(${slideVar}, Inches(${x}), Inches(3.05), Inches(4.2), Inches(1.5), "${step[1].replace(/"/g, '\\"')}", font_size=13, color='ink', font_name=FONT_BODY, alignment=PP_ALIGN.CENTER, vertical_anchor=MSO_ANCHOR.TOP)\n`
+      })
+      if (pg.takeaway) {
+        py += `add_text_box(${slideVar}, Inches(0.8), Inches(4.6), Inches(8.4), Inches(0.85), "Idea clave ${pg.takeaway.replace(/"/g, '\\"')}", font_size=14, color='accent2', font_name=FONT_BODY, vertical_anchor=MSO_ANCHOR.MIDDLE)\n`
+      }
+      py += `\n`
+      return
+    }
+
+    if (pg.table) {
+      py += `add_text_box(${slideVar}, Inches(0.5), Inches(0.3), Inches(9), Inches(0.8), "${slideTitle}", font_size=28, bold=True, color='ink', font_name=FONT_TITLE, alignment=PP_ALIGN.LEFT, vertical_anchor=MSO_ANCHOR.MIDDLE)\n`
+      py += `shape = ${slideVar}.shapes.add_shape(MSO_SHAPE.RECTANGLE, Emu(Inches(0.5)), Emu(Inches(1.18)), Emu(Inches(1.6)), Emu(Inches(0.06)))\n`
+      py += `shape.fill.solid(); shape.fill.fore_color.rgb = COLORS['accent']; shape.line.fill.background()\n`
+      const rows = pg.table.rows || []
+      const headers = pg.table.header || []
+      const totalRows = rows.length + 1
+      const totalCols = headers.length
+      py += `table_shape = ${slideVar}.shapes.add_table(${totalRows}, ${totalCols}, Emu(Inches(0.5)), Emu(Inches(1.35)), Emu(Inches(9)), Emu(Inches(3.5)))\n`
+      py += `table = table_shape.table\n`
+      headers.forEach((h, ci) => {
+        py += `cell = table.cell(0, ${ci})\n`
+        py += `cell.text = "${h.replace(/"/g, '\\"')}"\n`
+        py += `for paragraph in cell.text_frame.paragraphs:\n`
+        py += `    paragraph.font.size = Pt(14)\n`
+        py += `    paragraph.font.bold = True\n`
+        py += `    paragraph.font.color.rgb = COLORS['tableHeaderFg']\n`
+        py += `    paragraph.font.name = FONT_BODY\n`
+        py += `cell.fill.solid()\n`
+        py += `cell.fill.fore_color.rgb = COLORS['tableHeaderBg']\n`
+      })
+      rows.forEach((row, ri) => {
+        row.forEach((cell, ci) => {
+          py += `cell = table.cell(${ri + 1}, ${ci})\n`
+          py += `cell.text = "${cell.replace(/"/g, '\\"')}"\n`
+          py += `for paragraph in cell.text_frame.paragraphs:\n`
+          py += `    paragraph.font.size = Pt(12)\n`
+          py += `    paragraph.font.color.rgb = COLORS['ink']\n`
+          py += `    paragraph.font.name = FONT_BODY\n`
+          if (ci === 0) py += `    paragraph.font.bold = True\n`
+        })
+      })
+      if (pg.formula) {
+        py += `add_text_box(${slideVar}, Inches(0.8), Inches(4.5), Inches(8.4), Inches(0.85), "Formula: ${pg.formula.replace(/"/g, '\\"')}", font_size=14, color='accent2', font_name=FONT_BODY, vertical_anchor=MSO_ANCHOR.MIDDLE)\n`
+      }
+      py += `\n`
+      return
+    }
+
+    if (pg.formula) {
+      py += `add_text_box(${slideVar}, Inches(0.5), Inches(0.3), Inches(9), Inches(0.8), "${slideTitle}", font_size=28, bold=True, color='ink', font_name=FONT_TITLE, alignment=PP_ALIGN.LEFT, vertical_anchor=MSO_ANCHOR.MIDDLE)\n`
+      py += `shape = ${slideVar}.shapes.add_shape(MSO_SHAPE.RECTANGLE, Emu(Inches(0.5)), Emu(Inches(1.18)), Emu(Inches(1.6)), Emu(Inches(0.06)))\n`
+      py += `shape.fill.solid(); shape.fill.fore_color.rgb = COLORS['accent']; shape.line.fill.background()\n`
+      py += `add_text_box(${slideVar}, Inches(0.5), Inches(1.35), Inches(9), Inches(1.1), "${pg.formula.replace(/"/g, '\\"')}", font_size=28, bold=True, color='accent', font_name=FONT_TITLE, alignment=PP_ALIGN.CENTER, vertical_anchor=MSO_ANCHOR.MIDDLE)\n`
+      if (pg.columns && pg.columns.length) {
+        pg.columns.forEach((col, idx) => {
+          if (idx >= 3) return
+          const x = 0.5 + idx * 3.0
+          py += `add_text_box(${slideVar}, Inches(${x}), Inches(2.7), Inches(2.8), Inches(2.25), "${col[0].replace(/"/g, '\\"')}", font_size=16, bold=True, color='cardTitle', font_name=FONT_TITLE, vertical_anchor=MSO_ANCHOR.TOP)\n`
+          py += `add_text_box(${slideVar}, Inches(${x}), Inches(3.5), Inches(2.8), Inches(1.3), "${col[1].replace(/"/g, '\\"')}", font_size=14, color='cardText', font_name=FONT_BODY, vertical_anchor=MSO_ANCHOR.TOP)\n`
+        })
+      }
+      py += `\n`
+      return
+    }
+
+    if (pg.compare) {
+      py += `add_text_box(${slideVar}, Inches(0.5), Inches(0.3), Inches(9), Inches(0.8), "${slideTitle}", font_size=28, bold=True, color='ink', font_name=FONT_TITLE, alignment=PP_ALIGN.LEFT, vertical_anchor=MSO_ANCHOR.MIDDLE)\n`
+      py += `shape = ${slideVar}.shapes.add_shape(MSO_SHAPE.RECTANGLE, Emu(Inches(0.5)), Emu(Inches(1.18)), Emu(Inches(1.6)), Emu(Inches(0.06)))\n`
+      py += `shape.fill.solid(); shape.fill.fore_color.rgb = COLORS['accent']; shape.line.fill.background()\n`
+      pg.compare.forEach((item, idx) => {
+        if (idx >= 3) return
+        const x = 0.5 + idx * 3.0
+        py += `add_text_box(${slideVar}, Inches(${x}), Inches(1.5), Inches(2.8), Inches(3.15), "${item.label}", font_size=14, color='ink', font_name=FONT_BODY, vertical_anchor=MSO_ANCHOR.TOP)\n`
+        py += `add_text_box(${slideVar}, Inches(${x}), Inches(1.8), Inches(2.8), Inches(1.5), "${item.value.replace(/"/g, '\\"')}", font_size=24, bold=True, color='accent', font_name=FONT_TITLE, alignment=PP_ALIGN.CENTER, vertical_anchor=MSO_ANCHOR.MIDDLE)\n`
+      })
+      py += `\n`
+      return
+    }
+
+    if (pg.chart) {
+      py += `add_text_box(${slideVar}, Inches(0.5), Inches(0.3), Inches(9), Inches(0.8), "${slideTitle}", font_size=28, bold=True, color='ink', font_name=FONT_TITLE, alignment=PP_ALIGN.LEFT, vertical_anchor=MSO_ANCHOR.MIDDLE)\n`
+      py += `shape = ${slideVar}.shapes.add_shape(MSO_SHAPE.RECTANGLE, Emu(Inches(0.5)), Emu(Inches(1.18)), Emu(Inches(1.6)), Emu(Inches(0.06)))\n`
+      py += `shape.fill.solid(); shape.fill.fore_color.rgb = COLORS['accent']; shape.line.fill.background()\n`
+      if (pg.chart.axisTitle) {
+        py += `add_text_box(${slideVar}, Inches(0.5), Inches(1.35), Inches(9), Inches(0.5), "${pg.chart.axisTitle.replace(/"/g, '\\"')}", font_size=14, color='muted', font_name=FONT_BODY, alignment=PP_ALIGN.CENTER, vertical_anchor=MSO_ANCHOR.MIDDLE)\n`
+      }
+      py += `# Chart data (python-pptx chart creation is complex - see python-pptx docs)\n`
+      py += `# Categories: ${JSON.stringify(pg.chart.categories).replace(/"/g, '\\"')}\n`
+      pg.chart.series.forEach((sr, si) => {
+        py += `# Series ${sr.name}: ${JSON.stringify(sr.values).replace(/"/g, '\\"')}\n`
+      })
+      if (pg.takeaway) {
+        py += `add_text_box(${slideVar}, Inches(0.8), Inches(4.6), Inches(8.4), Inches(0.85), "Idea clave ${pg.takeaway.replace(/"/g, '\\"')}", font_size=14, color='accent2', font_name=FONT_BODY, vertical_anchor=MSO_ANCHOR.MIDDLE)\n`
+      }
+      py += `\n`
+      return
+    }
+
+    if (pg.figure !== undefined || pg.img !== undefined) {
+      py += `add_text_box(${slideVar}, Inches(0.5), Inches(0.3), Inches(9), Inches(0.8), "${slideTitle}", font_size=28, bold=True, color='ink', font_name=FONT_TITLE, alignment=PP_ALIGN.LEFT, vertical_anchor=MSO_ANCHOR.MIDDLE)\n`
+      py += `shape = ${slideVar}.shapes.add_shape(MSO_SHAPE.RECTANGLE, Emu(Inches(0.5)), Emu(Inches(1.18)), Emu(Inches(1.6)), Emu(Inches(0.06)))\n`
+      py += `shape.fill.solid(); shape.fill.fore_color.rgb = COLORS['accent']; shape.line.fill.background()\n`
+      py += `add_text_box(${slideVar}, Inches(0.5), Inches(1.45), Inches(9), Inches(3.55), "[Imagen ${pg.figure || '?'} - inserte manualmente]", font_size=16, color='muted', font_name=FONT_BODY, alignment=PP_ALIGN.CENTER, vertical_anchor=MSO_ANCHOR.MIDDLE)\n`
+      if (pg.takeaway) {
+        py += `add_text_box(${slideVar}, Inches(0.8), Inches(4.6), Inches(8.4), Inches(0.85), "Idea clave ${pg.takeaway.replace(/"/g, '\\"')}", font_size=14, color='accent2', font_name=FONT_BODY, vertical_anchor=MSO_ANCHOR.MIDDLE)\n`
+      }
+      py += `\n`
+      return
+    }
+
+    // content por defecto
+    py += `add_text_box(${slideVar}, Inches(0.5), Inches(0.3), Inches(9), Inches(0.8), "${slideTitle}", font_size=28, bold=True, color='ink', font_name=FONT_TITLE, alignment=PP_ALIGN.LEFT, vertical_anchor=MSO_ANCHOR.MIDDLE)\n`
+    py += `shape = ${slideVar}.shapes.add_shape(MSO_SHAPE.RECTANGLE, Emu(Inches(0.5)), Emu(Inches(1.18)), Emu(Inches(1.6)), Emu(Inches(0.06)))\n`
+    py += `shape.fill.solid(); shape.fill.fore_color.rgb = COLORS['accent']; shape.line.fill.background()\n`
+    if (pg.bullets && pg.bullets.length) {
+      py += `add_bullet_slide(${slideVar}, ${JSON.stringify(pg.bullets).replace(/"/g, '\\"')}, Inches(0.7), Inches(1.45), Inches(9), Inches(3.55), font_size=18, color='ink', font_name=FONT_BODY)\n`
+    }
+    py += `\n`
+  })
+
+  py += `# Footer en cada slide\n`
+  py += `for i, slide in enumerate(prs.slides):\n`
+  py += `    add_text_box(slide, Inches(8.7), Inches(5.25), Inches(0.9), Inches(0.25), f"{i+1}/{len(prs.slides)}", font_size=9, color='footer', font_name=FONT_BODY, alignment=PP_ALIGN.RIGHT, vertical_anchor=MSO_ANCHOR.MIDDLE)\n\n`
+  py += `prs.save('presentacion.pptx')\n`
+  py += `print("Presentación guardada como presentacion.pptx")\n`
+  return py
+}
+
 function currentTheme() {
   const v = document.getElementById('sel-theme').value
   return THEMES[v] ? v : 'seriph'
@@ -2044,12 +2306,16 @@ function init() {
   renderStylePreviews()
   themeSel.addEventListener('change', syncStyleCards)
   const formatSel = document.getElementById('sel-format')
+  const latexHint = document.getElementById('latex-hint')
   const updateDownloadBtn = () => {
     const format = formatSel.value
     const btn = document.getElementById('btn-download')
     if (btn) {
-      btn.textContent = format === 'latex' ? 'Descargar .tex' : 'Descargar .pptx'
+      if (format === 'latex') btn.textContent = 'Descargar .tex'
+      else if (format === 'python') btn.textContent = 'Descargar .py'
+      else btn.textContent = 'Descargar .pptx'
     }
+    if (latexHint) latexHint.style.display = format === 'latex' ? 'block' : 'none'
   }
   formatSel.addEventListener('change', updateDownloadBtn)
   updateDownloadBtn()
@@ -2084,12 +2350,21 @@ function init() {
       }).catch((e) => {
         setStatus('error', e.message)
       })
-    } else {
+    } else if (format === 'latex') {
       setStatus('armando', 'Generando LaTeX…')
       try {
         const latex = buildLatex(lastSlides, { title: lastSlides[0].title, theme: currentTheme() })
         downloadText(latex, 'presentacion.tex')
         setStatus('listo', 'LaTeX descargado.')
+      } catch (e) {
+        setStatus('error', e.message)
+      }
+    } else if (format === 'python') {
+      setStatus('armando', 'Generando Python…')
+      try {
+        const python = buildPython(lastSlides, { title: lastSlides[0].title, theme: currentTheme() })
+        downloadText(python, 'presentacion.py')
+        setStatus('listo', 'Python descargado. Ejecuta: python presentacion.py (requiere pip install python-pptx)')
       } catch (e) {
         setStatus('error', e.message)
       }
@@ -2104,7 +2379,7 @@ function init() {
     const inst = document.getElementById('in-instrucciones').value.trim()
     const format = document.getElementById('sel-format').value
     const extra = inst ? ' — Instrucciones detectadas: la demo usa un mazo fijo y no puede aplicarlas; se aplicarán al generar con tu clave.' : ''
-    const formatText = format === 'latex' ? '.tex' : '.pptx'
+    const formatText = format === 'latex' ? '.tex' : (format === 'python' ? '.py' : '.pptx')
     setStatus('listo', `Ejemplo cargado: ${pages.length} diapositivas (${THEMES[themeKey].name}). Pulsa Descargar ${formatText}.${extra}`)
     document.getElementById('btn-download').disabled = false
   })

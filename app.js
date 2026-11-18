@@ -111,8 +111,8 @@ function htmlToText(html) {
     .replace(/<br[^>]*>/gi, '\n')
     .replace(/<[^>]+>/g, '')
     .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>')
+    .replace(/"/g, '"').replace(/'/g, "'")
     .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n')
     .trim()
 }
@@ -1246,6 +1246,10 @@ const KEY_NAME = 'pptxgen.key.v1'
 const PROVIDERS = {
   aistudio: { label: 'Google AI Studio', model: 'gemini-4-hydrogen', models: ['gemini-4-hydrogen', 'gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'], keyUrl: 'https://aistudio.google.com/apikey' },
 }
+// URL del backend de compilación (cámbiala al desplegar en Render)
+// Ejemplo: 'https://generador-pptx-compiler.onrender.com'
+const COMPILER_BACKEND_URL = ''
+
 let lastSlides = null
 let lastFormat = 'pptx'
 
@@ -1286,6 +1290,49 @@ function fetchWithTimeout(url, options, ms) {
       throw e
     },
   )
+}
+
+// ===== CLIENTE BACKEND DE COMPILACIÓN =====
+const COMPILER_TIMEOUT_MS = 180000  // 3 minutos para compilación
+
+async function compileLatexViaBackend(latex, filename) {
+  if (!COMPILER_BACKEND_URL) {
+    throw new Error('Backend de compilación no configurado. Define COMPILER_BACKEND_URL.')
+  }
+  setStatus('armando', 'Compilando LaTeX en el servidor…')
+  const resp = await fetchWithTimeout(`${COMPILER_BACKEND_URL}/compile/latex`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ latex, filename })
+  }, COMPILER_TIMEOUT_MS)
+
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}))
+    throw new Error(err.error || `Error compilando LaTeX (HTTP ${resp.status})`)
+  }
+  const blob = await resp.blob()
+  downloadPptx(blob, `${filename}.pdf`)
+  setStatus('listo', 'PDF descargado (compilado en servidor).')
+}
+
+async function compilePythonViaBackend(python, filename) {
+  if (!COMPILER_BACKEND_URL) {
+    throw new Error('Backend de compilación no configurado. Define COMPILER_BACKEND_URL.')
+  }
+  setStatus('armando', 'Generando PPTX desde Python en el servidor…')
+  const resp = await fetchWithTimeout(`${COMPILER_BACKEND_URL}/compile/python`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ python, filename })
+  }, COMPILER_TIMEOUT_MS)
+
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}))
+    throw new Error(err.error || `Error generando PPTX (HTTP ${resp.status})`)
+  }
+  const blob = await resp.blob()
+  downloadPptx(blob, `${filename}.pptx`)
+  setStatus('listo', 'PPTX descargado (generado en servidor).')
 }
 
 function callAistudio(apiKey, model, prompt, ms, images) {
@@ -1361,7 +1408,7 @@ function structureSlides(text, opts) {
   const provider = o.provider || 'aistudio'
   const p = PROVIDERS[provider] || PROVIDERS.aistudio
   const maxSlides = Math.max(1, Math.min(o.maxSlides || DEFAULT_MAX_SLIDES, 30))
-  const waitMs = (typeof o.waitMs === 'number') ? o.waitMs : 1500  // reducido de 3000 a 1500
+  const waitMs = (typeof o.waitMs === 'number') ? o.waitMs : 1500
   const timeoutMs = (typeof o.timeoutMs === 'number') ? o.timeoutMs : REQUEST_TIMEOUT_MS
   const t = truncateText(text)
   const notice = t.truncated ? ` (nota: texto recortado a ${MAX_CHARS} caracteres)` : ''
@@ -1444,7 +1491,7 @@ function onGenerate() {
     lastSlides = slides
     const falta = slides.length < o.maxSlides ? ` (pediste ${o.maxSlides}: la IA no dio más contenido)` : ''
     const format = document.getElementById('sel-format').value
-    const formatText = format === 'latex' ? '.tex' : '.pptx'
+    const formatText = format === 'latex' ? '.tex' : (format === 'python' ? '.py' : '.pptx')
     setStatus('listo', `Estructura lista: ${slides.length} diapositivas${falta}. Ya puedes descargar el ${formatText}.`)
     document.getElementById('btn-download').disabled = false
   }).catch((e) => {
@@ -2280,76 +2327,6 @@ function downloadText(text, filename) {
   downloadPptx(blob, filename)
 }
 
-// Genera URL de Overleaf con el código LaTeX embebido
-function buildOverleafUrl(latex) {
-  // Overleaf permite crear proyecto desde URL con parámetro git o zip
-  // Usamos la API de "New Project from GitHub" pero más simple: subimos como gist
-  // Alternativa práctica: codificar en base64 y usar rawgit-like approach
-  // Overleaf no tiene API pública simple para "create from text", pero podemos
-  // usar el truco de crear un proyecto temporal via template
-  const encoded = btoa(unescape(encodeURIComponent(latex)))
-  // Usamos un template mínimo de Overleaf que acepta el código via URL parameter
-  // Nota: Overleaf no soporta esto nativamente, así que usamos la alternativa:
-  // Redirigir a new project y el usuario pega, o usar GitHub Gist
-  return `https://www.overleaf.com/new?template=blank&engine=xelatex`
-}
-
-// Genera URL de Google Colab con el código Python embebido
-function buildColabUrl(python) {
-  // Colab permite notebook desde GitHub Gist o raw URL
-  // Creamos un notebook JSON con el código y lo codificamos
-  const notebook = {
-    nbformat: 4,
-    nbformat_minor: 0,
-    metadata: { colab: { name: 'presentacion.ipynb' } },
-    cells: [
-      {
-        cell_type: 'code',
-        metadata: { id: 'install' },
-        source: ['!pip install python-pptx -q'],
-        outputs: [], execution_count: null
-      },
-      {
-        cell_type: 'code',
-        metadata: { id: 'generate' },
-        source: python.split('\n'),
-        outputs: [], execution_count: null
-      },
-      {
-        cell_type: 'code',
-        metadata: { id: 'download' },
-        source: [
-          "from google.colab import files",
-          "files.download('presentacion.pptx')"
-        ],
-        outputs: [], execution_count: null
-      }
-    ]
-  }
-  const json = JSON.stringify(notebook)
-  const encoded = btoa(unescape(encodeURIComponent(json)))
-  return `https://colab.research.google.com/github/googlecolab/colabtools/blob/main/notebooks/colab-intro.ipynb#scrollTo=install` // fallback
-}
-
-// Versión mejorada: usa GitHub Gist API (requiere token) o simplemente instruye
-// Para mantenerlo 100% client-side sin tokens, mostramos botones que abren
-// Overleaf/Colab y copian el código al portapapeles automáticamente
-
-async function copyAndOpen(url, text, label) {
-  try {
-    await navigator.clipboard.writeText(text)
-    setStatus('listo', `✅ ${label} copiado al portapapeles. Abriendo ${label}...`)
-  } catch (e) {
-    setStatus('listo', `⚠️ No se pudo copiar (permite portapapeles). Abriendo ${label}...`)
-  }
-  window.open(url, '_blank', 'noopener,noreferrer')
-}
-
-// Exponer globalmente para los onclick en HTML dinámico (solo en navegador)
-if (typeof window !== 'undefined') {
-  window.copyAndOpen = copyAndOpen
-}
-
 function init() {
   const missing = [
     ['PptxGenJS', 'pptxgenjs'],
@@ -2430,8 +2407,25 @@ function init() {
         setStatus('error', e.message)
       })
     } else if (format === 'latex') {
-      setStatus('armando', 'Generando LaTeX…')
-      try {
+      if (COMPILER_BACKEND_URL) {
+        // Usar backend para compilar a PDF
+        const latex = buildLatex(lastSlides, { title: lastSlides[0].title, theme: currentTheme() })
+        compileLatexViaBackend(latex, 'presentacion').catch((e) => {
+          // Fallback: descargar .tex si falla el backend
+          downloadText(latex, 'presentacion.tex')
+          setStatusHTML('listo', `
+            <div>
+              <strong>⚠️ Backend no disponible, se descargó .tex</strong>
+              <div style="margin-top: 0.5rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                <button type="button" onclick="copyAndOpen('https://www.overleaf.com/new?template=blank&engine=xelatex', \`${latex.replace(/`/g, '\\`')}\`, 'Overleaf')" style="padding: 0.4rem 0.8rem; background: #47a141; color: white; border: none; border-radius: 4px; cursor: pointer;">📝 Abrir en Overleaf</button>
+                <button type="button" onclick="navigator.clipboard.writeText(\`${latex.replace(/`/g, '\\`')}\`).then(()=>setStatus('listo','✅ Código LaTeX copiado al portapapeles'))" style="padding: 0.4rem 0.8rem; background: #333; color: white; border: none; border-radius: 4px; cursor: pointer;">📋 Copiar código</button>
+              </div>
+              <small style="color: #666; display: block; margin-top: 0.5rem;">En Overleaf: New Project → Upload Project → arrastra el .tex o pega el código. Compila con XeLaTeX.</small>
+            </div>
+          `)
+        })
+      } else {
+        // Sin backend: descargar .tex
         const latex = buildLatex(lastSlides, { title: lastSlides[0].title, theme: currentTheme() })
         downloadText(latex, 'presentacion.tex')
         setStatusHTML('listo', `
@@ -2444,12 +2438,27 @@ function init() {
             <small style="color: #666; display: block; margin-top: 0.5rem;">En Overleaf: New Project → Upload Project → arrastra el .tex o pega el código. Compila con XeLaTeX.</small>
           </div>
         `)
-      } catch (e) {
-        setStatus('error', e.message)
       }
     } else if (format === 'python') {
-      setStatus('armando', 'Generando Python…')
-      try {
+      if (COMPILER_BACKEND_URL) {
+        // Usar backend para generar PPTX
+        const python = buildPython(lastSlides, { title: lastSlides[0].title, theme: currentTheme() })
+        compilePythonViaBackend(python, 'presentacion').catch((e) => {
+          // Fallback: descargar .py si falla el backend
+          downloadText(python, 'presentacion.py')
+          setStatusHTML('listo', `
+            <div>
+              <strong>⚠️ Backend no disponible, se descargó .py</strong>
+              <div style="margin-top: 0.5rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                <button type="button" onclick="copyAndOpen('https://colab.research.google.com/', \`${python.replace(/`/g, '\\`')}\`, 'Colab')" style="padding: 0.4rem 0.8rem; background: #f9ab00; color: black; border: none; border-radius: 4px; cursor: pointer;">🐍 Abrir en Google Colab</button>
+                <button type="button" onclick="navigator.clipboard.writeText(\`${python.replace(/`/g, '\\`')}\`).then(()=>setStatus('listo','✅ Código Python copiado al portapapeles'))" style="padding: 0.4rem 0.8rem; background: #333; color: white; border: none; border-radius: 4px; cursor: pointer;">📋 Copiar código</button>
+              </div>
+              <small style="color: #666; display: block; margin-top: 0.5rem;">En Colab: pega el código en una celda, ejecuta (Shift+Enter). Generará presentacion.pptx y la descargará.</small>
+            </div>
+          `)
+        })
+      } else {
+        // Sin backend: descargar .py
         const python = buildPython(lastSlides, { title: lastSlides[0].title, theme: currentTheme() })
         downloadText(python, 'presentacion.py')
         setStatusHTML('listo', `
@@ -2462,8 +2471,6 @@ function init() {
             <small style="color: #666; display: block; margin-top: 0.5rem;">En Colab: pega el código en una celda, ejecuta (Shift+Enter). Generará presentacion.pptx y la descargará.</small>
           </div>
         `)
-      } catch (e) {
-        setStatus('error', e.message)
       }
     }
   })
@@ -2476,34 +2483,61 @@ function init() {
     const inst = document.getElementById('in-instrucciones').value.trim()
     const format = document.getElementById('sel-format').value
     const extra = inst ? ' — Instrucciones detectadas: la demo usa un mazo fijo y no puede aplicarlas; se aplicarán al generar con tu clave.' : ''
-    const formatText = format === 'latex' ? '.tex' : (format === 'python' ? '.py' : '.pptx')
     
     if (format === 'latex') {
       const latex = buildLatex(SAMPLE_DECK, { title: SAMPLE_DECK[0].title, theme: themeKey })
-      setStatusHTML('listo', `
-        <div>
-          <strong>✅ Ejemplo LaTeX listo (${pages.length} diapositivas, ${THEMES[themeKey].name}).</strong>${extra}
-          <div style="margin-top: 0.5rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
-            <button type="button" onclick="copyAndOpen('https://www.overleaf.com/new?template=blank&engine=xelatex', \`${latex.replace(/`/g, '\\`')}\`, 'Overleaf')" style="padding: 0.4rem 0.8rem; background: #47a141; color: white; border: none; border-radius: 4px; cursor: pointer;">📝 Abrir en Overleaf</button>
-            <button type="button" onclick="navigator.clipboard.writeText(\`${latex.replace(/`/g, '\\`')}\`).then(()=>setStatus('listo','✅ Código LaTeX copiado al portapapeles'))" style="padding: 0.4rem 0.8rem; background: #333; color: white; border: none; border-radius: 4px; cursor: pointer;">📋 Copiar código</button>
+      if (COMPILER_BACKEND_URL) {
+        setStatusHTML('listo', `
+          <div>
+            <strong>✅ Ejemplo LaTeX listo (${pages.length} diapositivas, ${THEMES[themeKey].name}).</strong>${extra}
+            <div style="margin-top: 0.5rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+              <button type="button" onclick="compileLatexViaBackend(\`${latex.replace(/`/g, '\\`')}\`, 'presentacion')" style="padding: 0.4rem 0.8rem; background: #47a141; color: white; border: none; border-radius: 4px; cursor: pointer;">⚙️ Compilar a PDF (backend)</button>
+              <button type="button" onclick="copyAndOpen('https://www.overleaf.com/new?template=blank&engine=xelatex', \`${latex.replace(/`/g, '\\`')}\`, 'Overleaf')" style="padding: 0.4rem 0.8rem; background: #47a141; color: white; border: none; border-radius: 4px; cursor: pointer;">📝 Abrir en Overleaf</button>
+              <button type="button" onclick="navigator.clipboard.writeText(\`${latex.replace(/`/g, '\\`')}\`).then(()=>setStatus('listo','✅ Código LaTeX copiado al portapapeles'))" style="padding: 0.4rem 0.8rem; background: #333; color: white; border: none; border-radius: 4px; cursor: pointer;">📋 Copiar código</button>
+            </div>
+            <small style="color: #666; display: block; margin-top: 0.5rem;">En Overleaf: New Project → Upload Project → arrastra el .tex o pega el código. Compila con XeLaTeX.</small>
           </div>
-          <small style="color: #666; display: block; margin-top: 0.5rem;">En Overleaf: New Project → Upload Project → arrastra el .tex o pega el código. Compila con XeLaTeX.</small>
-        </div>
-      `)
+        `)
+      } else {
+        setStatusHTML('listo', `
+          <div>
+            <strong>✅ Ejemplo LaTeX listo (${pages.length} diapositivas, ${THEMES[themeKey].name}).</strong>${extra}
+            <div style="margin-top: 0.5rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+              <button type="button" onclick="copyAndOpen('https://www.overleaf.com/new?template=blank&engine=xelatex', \`${latex.replace(/`/g, '\\`')}\`, 'Overleaf')" style="padding: 0.4rem 0.8rem; background: #47a141; color: white; border: none; border-radius: 4px; cursor: pointer;">📝 Abrir en Overleaf</button>
+              <button type="button" onclick="navigator.clipboard.writeText(\`${latex.replace(/`/g, '\\`')}\`).then(()=>setStatus('listo','✅ Código LaTeX copiado al portapapeles'))" style="padding: 0.4rem 0.8rem; background: #333; color: white; border: none; border-radius: 4px; cursor: pointer;">📋 Copiar código</button>
+            </div>
+            <small style="color: #666; display: block; margin-top: 0.5rem;">En Overleaf: New Project → Upload Project → arrastra el .tex o pega el código. Compila con XeLaTeX.</small>
+          </div>
+        `)
+      }
     } else if (format === 'python') {
       const python = buildPython(SAMPLE_DECK, { title: SAMPLE_DECK[0].title, theme: themeKey })
-      setStatusHTML('listo', `
-        <div>
-          <strong>✅ Ejemplo Python listo (${pages.length} diapositivas, ${THEMES[themeKey].name}).</strong>${extra}
-          <div style="margin-top: 0.5rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
-            <button type="button" onclick="copyAndOpen('https://colab.research.google.com/', \`${python.replace(/`/g, '\\`')}\`, 'Colab')" style="padding: 0.4rem 0.8rem; background: #f9ab00; color: black; border: none; border-radius: 4px; cursor: pointer;">🐍 Abrir en Google Colab</button>
-            <button type="button" onclick="navigator.clipboard.writeText(\`${python.replace(/`/g, '\\`')}\`).then(()=>setStatus('listo','✅ Código Python copiado al portapapeles'))" style="padding: 0.4rem 0.8rem; background: #333; color: white; border: none; border-radius: 4px; cursor: pointer;">📋 Copiar código</button>
+      if (COMPILER_BACKEND_URL) {
+        setStatusHTML('listo', `
+          <div>
+            <strong>✅ Ejemplo Python listo (${pages.length} diapositivas, ${THEMES[themeKey].name}).</strong>${extra}
+            <div style="margin-top: 0.5rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+              <button type="button" onclick="compilePythonViaBackend(\`${python.replace(/`/g, '\\`')}\`, 'presentacion')" style="padding: 0.4rem 0.8rem; background: #f9ab00; color: black; border: none; border-radius: 4px; cursor: pointer;">⚙️ Generar PPTX (backend)</button>
+              <button type="button" onclick="copyAndOpen('https://colab.research.google.com/', \`${python.replace(/`/g, '\\`')}\`, 'Colab')" style="padding: 0.4rem 0.8rem; background: #f9ab00; color: black; border: none; border-radius: 4px; cursor: pointer;">🐍 Abrir en Google Colab</button>
+              <button type="button" onclick="navigator.clipboard.writeText(\`${python.replace(/`/g, '\\`')}\`).then(()=>setStatus('listo','✅ Código Python copiado al portapapeles'))" style="padding: 0.4rem 0.8rem; background: #333; color: white; border: none; border-radius: 4px; cursor: pointer;">📋 Copiar código</button>
+            </div>
+            <small style="color: #666; display: block; margin-top: 0.5rem;">En Colab: pega el código en una celda, ejecuta (Shift+Enter). Generará presentacion.pptx y la descargará.</small>
           </div>
-          <small style="color: #666; display: block; margin-top: 0.5rem;">En Colab: pega el código en una celda, ejecuta (Shift+Enter). Generará presentacion.pptx y la descargará.</small>
-        </div>
-      `)
+        `)
+      } else {
+        setStatusHTML('listo', `
+          <div>
+            <strong>✅ Ejemplo Python listo (${pages.length} diapositivas, ${THEMES[themeKey].name}).</strong>${extra}
+            <div style="margin-top: 0.5rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+              <button type="button" onclick="copyAndOpen('https://colab.research.google.com/', \`${python.replace(/`/g, '\\`')}\`, 'Colab')" style="padding: 0.4rem 0.8rem; background: #f9ab00; color: black; border: none; border-radius: 4px; cursor: pointer;">🐍 Abrir en Google Colab</button>
+              <button type="button" onclick="navigator.clipboard.writeText(\`${python.replace(/`/g, '\\`')}\`).then(()=>setStatus('listo','✅ Código Python copiado al portapapeles'))" style="padding: 0.4rem 0.8rem; background: #333; color: white; border: none; border-radius: 4px; cursor: pointer;">📋 Copiar código</button>
+            </div>
+            <small style="color: #666; display: block; margin-top: 0.5rem;">En Colab: pega el código en una celda, ejecuta (Shift+Enter). Generará presentacion.pptx y la descargará.</small>
+          </div>
+        `)
+      }
     } else {
-      setStatus('listo', `Ejemplo cargado: ${pages.length} diapositivas (${THEMES[themeKey].name}). Pulsa Descargar ${formatText}.${extra}`)
+      setStatus('listo', `Ejemplo cargado: ${pages.length} diapositivas (${THEMES[themeKey].name}). Pulsa Descargar .pptx.${extra}`)
     }
     document.getElementById('btn-download').disabled = false
   })
@@ -2525,6 +2559,13 @@ function init() {
     return
   }
   setStatus('listo', 'Listo.')
+}
+
+// Exponer globalmente para los onclick en HTML dinámico (solo en navegador)
+if (typeof window !== 'undefined') {
+  window.copyAndOpen = copyAndOpen
+  window.compileLatexViaBackend = compileLatexViaBackend
+  window.compilePythonViaBackend = compilePythonViaBackend
 }
 
 if (typeof window !== 'undefined') {

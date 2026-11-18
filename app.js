@@ -1224,16 +1224,21 @@ if (typeof globalThis !== 'undefined') {
     render_figure,
     render_content,
     render_closing,
-    buildPptx
+    buildPptx,
+    buildLatex,
+    escapeLatex,
+    escapeLatexKeepMath,
+    escapeLatexNoMath,
+    themeToLatexColors
   }
 }
 
 const KEY_NAME = 'pptxgen.key.v1'
 const PROVIDERS = {
   aistudio: { label: 'Google AI Studio', model: 'gemini-flash-latest', models: ['gemini-flash-latest', 'gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'], keyUrl: 'https://aistudio.google.com/apikey' },
-  openrouter: { label: 'OpenRouter', model: 'meta-llama/llama-3.3-70b-instruct:free', models: ['meta-llama/llama-3.3-70b-instruct:free'], keyUrl: 'https://openrouter.ai/keys' },
 }
 let lastSlides = null
+let lastFormat = 'pptx'
 
 function loadKey() {
   try { return localStorage.getItem(KEY_NAME) || '' }
@@ -1428,7 +1433,9 @@ function onGenerate() {
   }).then((slides) => {
     lastSlides = slides
     const falta = slides.length < o.maxSlides ? ` (pediste ${o.maxSlides}: la IA no dio más contenido)` : ''
-    setStatus('listo', `Estructura lista: ${slides.length} diapositivas${falta}. Ya puedes descargar el .pptx.`)
+    const format = document.getElementById('sel-format').value
+    const formatText = format === 'latex' ? '.tex' : '.pptx'
+    setStatus('listo', `Estructura lista: ${slides.length} diapositivas${falta}. Ya puedes descargar el ${formatText}.`)
     document.getElementById('btn-download').disabled = false
   }).catch((e) => {
     if (document.getElementById('out-status').getAttribute('data-phase') !== 'error') {
@@ -1511,6 +1518,387 @@ function buildPptx(slides, meta) {
     })
   })
   return pptx.write({ outputType: 'blob' })
+}
+
+// ===== GENERADOR LATEX BEAMER =====
+function escapeLatex(text) {
+  if (!text) return ''
+  return String(text)
+    .replace(/\\/g, '\\textbackslash{}')
+    .replace(/~/g, '\\textasciitilde{}')
+    .replace(/\^/g, '\\textasciicircum{}')
+    .replace(/\$/g, '\\$')
+    .replace(/&/g, '\\&')
+    .replace(/%/g, '\\%')
+    .replace(/#/g, '\\#')
+    .replace(/_/g, '\\_')
+    .replace(/{/g, '\\{')
+    .replace(/}/g, '\\}')
+    .replace(/"/g, "''")
+    .replace(/</g, '\\textless{}')
+    .replace(/>/g, '\\textgreater{}')
+    .replace(/\|/g, '\\textbar{}')
+}
+
+function escapeLatexKeepMath(text) {
+  if (!text) return ''
+  // Protege fórmulas matemáticas $...$ y $$...$$ antes de escapar
+  const mathBlocks = []
+  const mathInlines = []
+  // Usamos placeholders con caracteres que NO se escapan (letras, números, guiones)
+  const BLOCK_PREFIX = 'MATHBLOCK'
+  const INLINE_PREFIX = 'MATHINLINE'
+  const SEP = 'X'
+  let result = String(text)
+    // Primero: bloques $$...$$ (display math)
+    .replace(/\$\$[\s\S]*?\$\$/g, (m) => {
+      mathBlocks.push(m)
+      return BLOCK_PREFIX + SEP + (mathBlocks.length - 1) + SEP
+    })
+    // Segundo: inline $...$ (pero no $$)
+    .replace(/(?<!\$)\$(?!\$)[^$\n]*?(?<!\$)\$(?!\$)/g, (m) => {
+      mathInlines.push(m)
+      return INLINE_PREFIX + SEP + (mathInlines.length - 1) + SEP
+    })
+  // Escapa caracteres LaTeX especiales
+  result = result
+    .replace(/\\/g, '\\textbackslash{}')
+    .replace(/~/g, '\\textasciitilde{}')
+    .replace(/\^/g, '\\textasciicircum{}')
+    .replace(/&/g, '\\&')
+    .replace(/%/g, '\\%')
+    .replace(/#/g, '\\#')
+    .replace(/_/g, '\\_')
+    .replace(/{/g, '\\{')
+    .replace(/}/g, '\\}')
+    .replace(/"/g, "''")
+    .replace(/</g, '\\textless{}')
+    .replace(/>/g, '\\textgreater{}')
+    .replace(/\|/g, '\\textbar{}')
+  // Restaura bloques matemáticos
+  mathBlocks.forEach((m, i) => {
+    result = result.replace(BLOCK_PREFIX + SEP + i + SEP, m)
+  })
+  mathInlines.forEach((m, i) => {
+    result = result.replace(INLINE_PREFIX + SEP + i + SEP, m)
+  })
+  return result
+}
+
+function escapeLatexNoMath(text) {
+  if (!text) return ''
+  return String(text)
+    .replace(/\\/g, '\\textbackslash{}')
+    .replace(/~/g, '\\textasciitilde{}')
+    .replace(/\^/g, '\\textasciicircum{}')
+    .replace(/\$/g, '\\$')
+    .replace(/&/g, '\\&')
+    .replace(/%/g, '\\%')
+    .replace(/#/g, '\\#')
+    .replace(/_/g, '\\_')
+    .replace(/{/g, '\\{')
+    .replace(/}/g, '\\}')
+    .replace(/"/g, "''")
+    .replace(/</g, '\\textless{}')
+    .replace(/>/g, '\\textgreater{}')
+    .replace(/\|/g, '\\textbar{}')
+}
+
+function themeToLatexColors(theme) {
+  const colors = {
+    EcoGreen: theme.accent,
+    EcoTeal: theme.accent2 || theme.accent,
+    EcoDark: theme.ink,
+    EcoLight: theme.cardBg,
+    EcoAccent: theme.accent4 || theme.accent,
+  }
+  let out = ''
+  Object.entries(colors).forEach(([name, hex]) => {
+    const r = parseInt(hex.slice(0, 2), 16)
+    const g = parseInt(hex.slice(2, 4), 16)
+    const b = parseInt(hex.slice(4, 6), 16)
+    out += `\\definecolor{${name}}{RGB}{${r}, ${g}, ${b}}\n`
+  })
+  return out
+}
+
+function buildLatex(slides, meta) {
+  const m = meta || {}
+  const th = THEMES[m.theme] || THEMES.seriph
+  const pages = paginateSlides(slides)
+  const title = escapeLatex(m.title || (pages[0] && pages[0].title) || 'Presentación')
+  const subtitle = escapeLatex(pages[0].subtitle || '')
+
+  let latex = `% Generado por Generador PPTX\n`
+  latex += `\\documentclass[aspectratio=169, 10pt]{beamer}\n\n`
+  latex += `\\usetheme{Boadilla}\n`
+  latex += `\\useinnertheme{rectangles}\n`
+  latex += `\\usefonttheme{professionalfonts}\n\n`
+  latex += `\\usepackage{fontspec}\n`
+  latex += `\\usepackage[spanish, bidi=basic, provide=*]{babel}\n`
+  latex += `\\babelprovide[import, onchar=ids fonts]{english}\n`
+  latex += `\\babelfont{rm}{Noto Sans}\n`
+  latex += `\\babelfont{sf}{Noto Sans}\n\n`
+  latex += `\\usepackage{amsmath}\n`
+  latex += `\\usepackage{booktabs}\n`
+  latex += `\\usepackage{array}\n\n`
+  latex += `% Paleta de colores basada en el tema seleccionado\n`
+  latex += themeToLatexColors(th)
+  latex += `\n`
+  latex += `\\setbeamercolor{structure}{fg=EcoGreen}\n`
+  latex += `\\setbeamercolor{palette primary}{bg=EcoGreen, fg=white}\n`
+  latex += `\\setbeamercolor{palette secondary}{bg=EcoTeal, fg=white}\n`
+  latex += `\\setbeamercolor{palette tertiary}{bg=EcoDark, fg=white}\n`
+  latex += `\\setbeamercolor{frametitle}{bg=EcoGreen, fg=white}\n`
+  latex += `\\setbeamercolor{title}{bg=EcoGreen, fg=white}\n`
+  latex += `\\setbeamercolor{normal text}{fg=EcoDark, bg=white}\n`
+  latex += `\\setbeamercolor{block title}{bg=EcoGreen, fg=white}\n`
+  latex += `\\setbeamercolor{block body}{bg=EcoLight, fg=EcoDark}\n`
+  latex += `\\setbeamercolor{block title alerted}{bg=EcoAccent, fg=white}\n`
+  latex += `\\setbeamercolor{block body alerted}{bg=EcoLight, fg=EcoDark}\n`
+  latex += `\\setbeamercolor{item}{fg=EcoGreen}\n\n`
+  latex += `\\setbeamertemplate{navigation symbols}{}\n\n`
+  latex += `\\setbeamertemplate{footline}{%\n`
+  latex += `  \\leavevmode%\n`
+  latex += `  \\hbox{%\n`
+  latex += `  \\begin{beamercolorbox}[wd=.78\\paperwidth,ht=2.3ex,dp=1ex,leftskip=2ex]{author in head/foot}%\n`
+  latex += `    \\usebeamerfont{author in head/foot}\\insertshorttitle\n`
+  latex += `  \\end{beamercolorbox}%\n`
+  latex += `  \\begin{beamercolorbox}[wd=.22\\paperwidth,ht=2.3ex,dp=1ex,rightskip=2ex]{date in head/foot}%\n`
+  latex += `    \\hfill\\usebeamerfont{date in head/foot}\\insertframenumber{} / \\inserttotalframenumber\n`
+  latex += `  \\end{beamercolorbox}}%\n`
+  latex += `  \\vskip0pt%\n`
+  latex += `}\n\n`
+  latex += `\\AtBeginSection[]{\n`
+  latex += `  \\begin{frame}\n`
+  latex += `    \\vfill\n`
+  latex += `    \\centering\n`
+  latex += `    \\begin{beamercolorbox}[sep=12pt,center,rounded=false]{title}\n`
+  latex += `      \\usebeamerfont{title}\\insertsectionhead\\par\n`
+  latex += `    \\end{beamercolorbox}\n`
+  latex += `    \\vfill\n`
+  latex += `  \\end{frame}\n`
+  latex += `}\n\n`
+  latex += `\\title[${title}]{${title}}\n`
+  if (subtitle) latex += `\\subtitle{${subtitle}}\n`
+  latex += `\\author{}\n`
+  latex += `\\date{}\n\n`
+  latex += `\\begin{document}\n\n`
+  latex += `% Portada\n`
+  latex += `\\begin{frame}\n`
+  latex += `  \\titlepage\n`
+  latex += `\\end{frame}\n\n`
+  latex += `% Índice\n`
+  latex += `\\begin{frame}{Contenidos de la presentación}\n`
+  latex += `  \\tableofcontents\n`
+  latex += `\\end{frame}\n\n`
+
+  let sec = 0
+  let sectionTitle = ''
+  pages.forEach((pg, i) => {
+    if (pg.cover) return
+    sec += 1
+    const slideTitle = escapeLatexKeepMath(sec + '. ' + pg.title)
+    
+    // Detectar cambio de sección (heurística simple: título empieza con número de sección)
+    const sectionMatch = pg.title.match(/^(\d+)\.\s*(.+)/)
+    if (sectionMatch && parseInt(sectionMatch[1]) > (parseInt(sectionTitle.match(/^(\d+)/)?.[1] || 0))) {
+      sectionTitle = sectionMatch[0]
+      latex += `\\section{${escapeLatex(sectionTitle)}}\n\n`
+    }
+
+    if (pg.closing) {
+      latex += `\\begin{frame}{${slideTitle}}\n`
+      latex += `  \\small\n`
+      pg.closing.forEach((item, idx) => {
+        latex += `  ${idx + 1}. ${escapeLatexKeepMath(item)}\n`
+      })
+      latex += `\\end{frame}\n\n`
+      return
+    }
+
+    if (pg.stats) {
+      latex += `\\begin{frame}{${slideTitle}}\n`
+      latex += `  \\small\n`
+      latex += `  \\begin{columns}[T]\n`
+      pg.stats.forEach((stat, idx) => {
+        if (idx >= 2) return // máx 2 columnas
+        const w = idx === 0 ? '0.48' : '0.48'
+        latex += `    \\begin{column}{${w}\\textwidth}\n`
+        latex += `      \\begin{block}{${escapeLatexKeepMath(stat.label)}}\n`
+        latex += `        \\begin{itemize}\n`
+        latex += `          \\item ${escapeLatexKeepMath(stat.value)}\n`
+        latex += `        \\end{itemize}\n`
+        latex += `      \\end{block}\n`
+        latex += `    \\end{column}\n`
+      })
+      latex += `  \\end{columns}\n`
+      if (pg.takeaway) {
+        latex += `  \\vspace{0.25cm}\n`
+        latex += `  \\begin{alertblock}{Idea clave}\n`
+        latex += `    ${escapeLatexKeepMath(pg.takeaway)}\n`
+        latex += `  \\end{alertblock}\n`
+      }
+      latex += `\\end{frame}\n\n`
+      return
+    }
+
+    if (pg.process) {
+      latex += `\\begin{frame}{${slideTitle}}\n`
+      latex += `  \\small\n`
+      latex += `  \\begin{columns}[T]\n`
+      pg.process.forEach((step, idx) => {
+        if (idx >= 2) return // máx 2 columnas
+        const w = idx === 0 ? '0.48' : '0.48'
+        latex += `    \\begin{column}{${w}\\textwidth}\n`
+        latex += `      \\begin{block}{${escapeLatexKeepMath(step[0])}}\n`
+        latex += `        ${escapeLatexKeepMath(step[1])}\n`
+        latex += `      \\end{block}\n`
+        latex += `    \\end{column}\n`
+      })
+      latex += `  \\end{columns}\n`
+      if (pg.takeaway) {
+        latex += `  \\vspace{0.25cm}\n`
+        latex += `  \\begin{alertblock}{Idea clave}\n`
+        latex += `    ${escapeLatexKeepMath(pg.takeaway)}\n`
+        latex += `  \\end{alertblock}\n`
+      }
+      latex += `\\end{frame}\n\n`
+      return
+    }
+
+    if (pg.table) {
+      latex += `\\begin{frame}{${slideTitle}}\n`
+      latex += `  \\small\n`
+      latex += `  \\begin{table}\n`
+      latex += `    \\centering\n`
+      const colCount = pg.table.header.length
+      const colSpec = Array(colCount).fill('p{0.22\\textwidth}').join(' ')
+      latex += `    \\begin{tabular}{${colSpec}}\n`
+      latex += `      \\toprule\n`
+      latex += `      ${pg.table.header.map(h => escapeLatexKeepMath(h)).join(' & ')} \\\\\n`
+      latex += `      \\midrule\n`
+      pg.table.rows.forEach((row) => {
+        latex += `      ${row.map(c => escapeLatexKeepMath(c)).join(' & ')} \\\\\n`
+        latex += `      \\addlinespace\n`
+      })
+      latex += `      \\bottomrule\n`
+      latex += `    \\end{tabular}\n`
+      latex += `  \\end{table}\n`
+      if (pg.formula) {
+        latex += `  \\vspace{0.2cm}\n`
+        latex += `  \\begin{alertblock}{Fórmula}\n`
+        latex += `    ${escapeLatexKeepMath(pg.formula)}\n`
+        latex += `  \\end{alertblock}\n`
+      }
+      latex += `\\end{frame}\n\n`
+      return
+    }
+
+    if (pg.formula) {
+      latex += `\\begin{frame}{${slideTitle}}\n`
+      latex += `  \\small\n`
+      latex += `  ${escapeLatexKeepMath(pg.formula)}\n`
+      if (pg.columns && pg.columns.length) {
+        latex += `  \\vspace{0.2cm}\n`
+        latex += `  \\begin{columns}[T]\n`
+        pg.columns.forEach((col, idx) => {
+          if (idx >= 3) return
+          const w = '0.30'
+          latex += `    \\begin{column}{${w}\\textwidth}\n`
+          latex += `      \\begin{block}{${escapeLatexKeepMath(col[0])}}\n`
+          latex += `        ${escapeLatexKeepMath(col[1])}\n`
+          latex += `      \\end{block}\n`
+          latex += `    \\end{column}\n`
+        })
+        latex += `  \\end{columns}\n`
+      }
+      latex += `\\end{frame}\n\n`
+      return
+    }
+
+    if (pg.compare) {
+      latex += `\\begin{frame}{${slideTitle}}\n`
+      latex += `  \\small\n`
+      latex += `  \\begin{columns}[T]\n`
+      pg.compare.forEach((item, idx) => {
+        if (idx >= 3) return
+        const w = '0.30'
+        latex += `    \\begin{column}{${w}\\textwidth}\n`
+        latex += `      \\begin{block}{${escapeLatexKeepMath(item.label)}}\n`
+        latex += `        ${escapeLatexKeepMath(item.value)}\n`
+        latex += `      \\end{block}\n`
+        latex += `    \\end{column}\n`
+      })
+      latex += `  \\end{columns}\n`
+      latex += `\\end{frame}\n\n`
+      return
+    }
+
+    if (pg.chart) {
+      // Para gráficos, generamos una tabla de datos como fallback
+      latex += `\\begin{frame}{${slideTitle}}\n`
+      latex += `  \\small\n`
+      if (pg.chart.axisTitle) {
+        latex += `  ${escapeLatexKeepMath(pg.chart.axisTitle)}\n`
+        latex += `  \\vspace{0.2cm}\n`
+      }
+      latex += `  \\begin{table}\n`
+      latex += `    \\centering\n`
+      latex += `    \\begin{tabular}{l${'c'.repeat(pg.chart.series.length)}}\n`
+      latex += `      \\toprule\n`
+      latex += `      Categoría & ${pg.chart.series.map(s => escapeLatexKeepMath(s.name)).join(' & ')} \\\\\n`
+      latex += `      \\midrule\n`
+      pg.chart.categories.forEach((cat, ci) => {
+        const vals = pg.chart.series.map(s => escapeLatexKeepMath(String(s.values[ci] || ''))).join(' & ')
+        latex += `      ${escapeLatexKeepMath(cat)} & ${vals} \\\\\n`
+      })
+      latex += `      \\bottomrule\n`
+      latex += `    \\end{tabular}\n`
+      latex += `  \\end{table}\n`
+      if (pg.takeaway) {
+        latex += `  \\vspace{0.25cm}\n`
+        latex += `  \\begin{alertblock}{Idea clave}\n`
+        latex += `    ${escapeLatexKeepMath(pg.takeaway)}\n`
+        latex += `  \\end{alertblock}\n`
+      }
+      latex += `\\end{frame}\n\n`
+      return
+    }
+
+    if (pg.figure !== undefined || pg.img !== undefined) {
+      latex += `\\begin{frame}{${slideTitle}}\n`
+      latex += `  \\small\n`
+      latex += `  \\begin{center}\n`
+      latex += `    [Imagen ${pg.figure || '?'} no incluida en la salida LaTeX — inserte manualmente]\n`
+      latex += `  \\end{center}\n`
+      if (pg.takeaway) {
+        latex += `  \\vspace{0.25cm}\n`
+        latex += `  \\begin{alertblock}{Idea clave}\n`
+        latex += `    ${escapeLatexKeepMath(pg.takeaway)}\n`
+        latex += `  \\end{alertblock}\n`
+      }
+      latex += `\\end{frame}\n\n`
+      return
+    }
+
+    // content por defecto
+    latex += `\\begin{frame}{${slideTitle}}\n`
+    latex += `  \\small\n`
+    if (pg.bullets && pg.bullets.length) {
+      latex += `  \\begin{itemize}\n`
+      pg.bullets.forEach((bullet) => {
+        // Procesa **palabras clave** en negrita
+        const escaped = escapeLatexKeepMath(bullet).replace(/\*\*(.+?)\*\*/g, '\\textbf{$1}')
+        latex += `    \\item ${escaped}\n`
+      })
+      latex += `  \\end{itemize}\n`
+    }
+    latex += `\\end{frame}\n\n`
+  })
+
+  latex += `\\end{document}\n`
+  return latex
 }
 
 function currentTheme() {
@@ -1616,6 +2004,11 @@ function downloadPptx(blob, filename) {
   setTimeout(() => { URL.revokeObjectURL(url); a.remove() }, 1000)
 }
 
+function downloadText(text, filename) {
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
+  downloadPptx(blob, filename)
+}
+
 function init() {
   const missing = [
     ['PptxGenJS', 'pptxgenjs'],
@@ -1650,6 +2043,16 @@ function init() {
   themeSel.value = 'seriph'
   renderStylePreviews()
   themeSel.addEventListener('change', syncStyleCards)
+  const formatSel = document.getElementById('sel-format')
+  const updateDownloadBtn = () => {
+    const format = formatSel.value
+    const btn = document.getElementById('btn-download')
+    if (btn) {
+      btn.textContent = format === 'latex' ? 'Descargar .tex' : 'Descargar .pptx'
+    }
+  }
+  formatSel.addEventListener('change', updateDownloadBtn)
+  updateDownloadBtn()
   const estilosBtn = document.getElementById('btn-estilos')
   estilosBtn.addEventListener('click', () => {
     const open = document.getElementById('estilos').classList.toggle('collapsed')
@@ -1667,31 +2070,42 @@ function init() {
   document.getElementById('btn-download').addEventListener('click', () => {
     if (!lastSlides)
       return
-    if (typeof PptxGenJS === 'undefined') {
-      setStatus('error', 'No se pudo cargar pptxgenjs (revisa tu conexión).')
-      return
+    const format = document.getElementById('sel-format').value
+    lastFormat = format
+    if (format === 'pptx') {
+      if (typeof PptxGenJS === 'undefined') {
+        setStatus('error', 'No se pudo cargar pptxgenjs (revisa tu conexión).')
+        return
+      }
+      setStatus('armando', 'Armando PPTX…')
+      buildPptx(lastSlides, { title: lastSlides[0].title, theme: currentTheme() }).then((blob) => {
+        downloadPptx(blob, 'presentacion.pptx')
+        setStatus('listo', 'PPTX descargado.')
+      }).catch((e) => {
+        setStatus('error', e.message)
+      })
+    } else {
+      setStatus('armando', 'Generando LaTeX…')
+      try {
+        const latex = buildLatex(lastSlides, { title: lastSlides[0].title, theme: currentTheme() })
+        downloadText(latex, 'presentacion.tex')
+        setStatus('listo', 'LaTeX descargado.')
+      } catch (e) {
+        setStatus('error', e.message)
+      }
     }
-    setStatus('armando', 'Armando PPTX…')
-    buildPptx(lastSlides, { title: lastSlides[0].title, theme: currentTheme() }).then((blob) => {
-      downloadPptx(blob, 'presentacion.pptx')
-      setStatus('listo', 'PPTX descargado.')
-    }).catch((e) => {
-      setStatus('error', e.message)
-    })
   })
   document.getElementById('btn-demo').addEventListener('click', () => {
-    if (typeof PptxGenJS === 'undefined') {
-      setStatus('error', 'No se pudo cargar pptxgenjs (revisa tu conexión).')
-      return
-    }
     SAMPLE_DECK.forEach((sl) => { if (sl.kind === 'figure' && !sl.img) sl.img = sampleFigureImg() })
     lastSlides = SAMPLE_DECK
     const themeKey = currentTheme()
     const th = THEMES[themeKey] || THEMES.seriph
     const pages = paginateSlides(SAMPLE_DECK)
     const inst = document.getElementById('in-instrucciones').value.trim()
+    const format = document.getElementById('sel-format').value
     const extra = inst ? ' — Instrucciones detectadas: la demo usa un mazo fijo y no puede aplicarlas; se aplicarán al generar con tu clave.' : ''
-    setStatus('listo', `Ejemplo cargado: ${pages.length} diapositivas (${THEMES[themeKey].name}). Pulsa Descargar .pptx.${extra}`)
+    const formatText = format === 'latex' ? '.tex' : '.pptx'
+    setStatus('listo', `Ejemplo cargado: ${pages.length} diapositivas (${THEMES[themeKey].name}). Pulsa Descargar ${formatText}.${extra}`)
     document.getElementById('btn-download').disabled = false
   })
   const themeBtn = document.getElementById('btn-theme')

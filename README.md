@@ -1,12 +1,12 @@
-# Generador PPTX (web estática)
+# Generador PPTX / LaTeX (web estática)
 
-Convierte apuntes en una presentación `.pptx` **editable en PowerPoint**, 100 % en el
+Convierte apuntes en una presentación **editable** (`.pptx` para PowerPoint / `.tex` para LaTeX Beamer), 100 % en el
 navegador. Sin backend, sin cuentas, sin telemetría y **gratis de alojar**.
 
 https://cce-ops.github.io/generador-pptx/
 
 Pega texto, o sube un `.md` / `.docx` / `.pdf`, elige un estilo y descarga una
-presentación 16:9 con portada, tablas, gráficos nativos y las propias figuras del
+presentación 16:9 con portada, tablas, gráficos y las propias figuras del
 documento. Usas **tu propia clave de API** (BYOK): no pasa nada por un servidor intermedio.
 
 **Probar sin clave:** el botón **Probar sin clave** genera una presentación de ejemplo
@@ -20,12 +20,11 @@ con los 10 tipos de slide, sin llamar a ninguna IA.
 - **Títulos numerados** ("1. Contexto clave") excepto portada y cierre.
 - **Títulos y bullets** con tamaño automático para llenar la slide sin solaparse ni desbordar.
 - **Tablas** con cabecera de color y el pie `N/total` en cada slide.
+- **Dos formatos de salida:** PowerPoint (`.pptx`) o LaTeX Beamer (`.tex`).
 
-### Gráficos nativos (no imágenes)
+### Gráficos
 
-El tipo `chart` genera un **gráfico real e editable de PowerPoint** (puedes tocar los
-datos allí). Cada variable lleva su **color propio**, con **nombre de eje vertical y
-unidades**. Soporta barras, líneas, tarta y doughnut.
+En PowerPoint: gráfico nativo editable. En LaTeX: tabla de datos con la misma información.
 
 ### Figuras del documento (`.docx` y `.pdf`)
 
@@ -34,6 +33,7 @@ repetidos, tope de 20), se insertan marcadores `[IMAGEN n]` junto al texto y la 
 decide cuáles se convierten en slides `figure`. Con **Gemini (visión)** la IA *ve* las
 imágenes y escribe un pie real para cada una; con modelos solo-texto las asigna por
 orden. Si el documento no tiene figuras, esos slides se rellenan como `content`.
+En LaTeX, las figuras se marcan como lugar para insertar manualmente.
 
 ## Estilos de presentación
 
@@ -46,17 +46,15 @@ Seis estilos, previsualizables en la barra lateral izquierda (plegable):
 - **Blanco y azul** — fondo blanco, azul `#4285F4`.
 - **Verde skill** — bosque / lima / ámbar.
 
-El estilo elegido se aplica igual a la generación con IA y al modo demo.
+El estilo elegido se aplica igual a la generación con IA y al modo demo, y define la paleta de colores tanto en PPTX como en LaTeX.
 
 ## Privacidad y modelos
 
 - La **API key queda solo en el `localStorage` de tu navegador** (botón *Borrar clave* la
   elimina). No hay servidor propio: el navegador habla directo con el proveedor.
-- **Google AI Studio (Gemini)** es el proveedor por defecto, con varios modelos y cadena
+- **Google AI Studio (Gemini)** es el único proveedor, con varios modelos y cadena
   de reintentos automática si uno falla.
-- **OpenRouter** (modelos gratuitos) es la alternativa.
-- Claves gratuitas: [AI Studio](https://aistudio.google.com/apikey) ·
-  [OpenRouter](https://openrouter.ai/keys). Puedes restringir la clave por dominio.
+- Claves gratuitas: [AI Studio](https://aistudio.google.com/apikey). Puedes restringir la clave por dominio.
 
 ## Desarrollo local
 
@@ -103,3 +101,14 @@ pdf.js era vulnerable a ejecución de código con un PDF malicioso).
 La IA devuelve una estructura JSON (`kind`, `title`, `bullets`…). Un normalizador
 garantiza que el número de slides pedido se cumpla, que cada slide tenga título y que
 los campos estén saneados antes de renderizar.
+
+### Generación LaTeX
+
+El generador LaTeX produce código Beamer compilable con XeLaTeX/LuaLaTeX. Incluye:
+- Preámbulo completo con tema `Boadilla`, fuentes Noto Sans vía `fontspec`/`babel`.
+- Paleta de colores derivada del estilo elegido (6 temas disponibles).
+- Plantilla de pie de página con título corto y numeración `N/total`.
+- Separadores de sección automáticos (`\AtBeginSection`).
+- Soporte para todos los 10 tipos de slide mapeados a entornos Beamer (`block`, `alertblock`, `columns`, `tabular`/`booktabs`, `itemize`).
+- Fórmulas matemáticas `$...$` y `$$...$$` preservadas tal cual.
+- Palabras clave en `**negrita**` convertidas a `\textbf{...}`.

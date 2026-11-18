@@ -35,7 +35,6 @@
 <label for="sel-provider">Proveedor:</label>
 <select id="sel-provider">
 <option value="aistudio" selected>Google AI Studio (Gemini, gratis)</option>
-<option value="openrouter">OpenRouter (modelos gratuitos)</option>
 </select>
 <label for="in-model">Modelo:</label>
 <select id="in-model"></select>
@@ -53,10 +52,15 @@
 <input type="number" id="in-max" value="15" min="1" max="30">
 <label for="sel-theme">Estilo de presentación:</label>
 <select id="sel-theme"></select>
+<label for="sel-format">Formato de salida:</label>
+<select id="sel-format">
+<option value="pptx">PowerPoint (.pptx)</option>
+<option value="latex">LaTeX Beamer (.tex)</option>
+</select>
 <div>
 <button type="button" id="btn-generate">Generar estructura</button>
 <button type="button" id="btn-demo">Probar sin clave (ejemplo)</button>
-<button type="button" id="btn-download">Descargar .pptx</button>
+<button type="button" id="btn-download">Descargar</button>
 </div>
 </section>
 

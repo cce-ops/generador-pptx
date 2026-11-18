@@ -2561,6 +2561,17 @@ function init() {
   setStatus('listo', 'Listo.')
 }
 
+// ===== UTILIDADES GLOBALES =====
+async function copyAndOpen(url, text, label) {
+  try {
+    await navigator.clipboard.writeText(text)
+    setStatus('listo', `✅ ${label} copiado al portapapeles. Abriendo ${label}...`)
+  } catch (e) {
+    setStatus('listo', `⚠️ No se pudo copiar (permite portapapeles). Abriendo ${label}...`)
+  }
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
+
 // Exponer globalmente para los onclick en HTML dinámico (solo en navegador)
 if (typeof window !== 'undefined') {
   window.copyAndOpen = copyAndOpen
